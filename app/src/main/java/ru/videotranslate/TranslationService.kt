@@ -4,7 +4,12 @@ import android.app.*
 import android.content.Intent
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioAttributes
+import android.media.AudioPlaybackCaptureConfiguration
 import android.media.MediaRecorder
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
@@ -37,13 +42,15 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
     private val executor = Executors.newSingleThreadExecutor()
     private val chunks = ArrayBlockingQueue<File>(2)
     @Volatile private var audioRecord: AudioRecord? = null
+    @Volatile private var projectionResultCode: Int = 0
+    @Volatile private var projectionData: Intent? = null
+    @Volatile private var mediaProjection: MediaProjection? = null
     @Volatile private var lastText = ""
     @Volatile private var lastAt = 0L
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
         tts = TextToSpeech(this, this)
         TranslationApi.warmUp(applicationContext) { ready ->
             if (!ready) updateNotification("Не удалось загрузить модель перевода — нужен интернет")
@@ -72,6 +79,28 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
             stopped.set(true)
             stopSelf()
             return START_NOT_STICKY
+        }
+        projectionResultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+        projectionData = if (Build.VERSION.SDK_INT >= 33) {
+            intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getParcelableExtra(EXTRA_RESULT_DATA)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && projectionData != null && projectionResultCode != 0) {
+                val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjection = manager.getMediaProjection(projectionResultCode, projectionData!!)
+                startForeground(NOTIFICATION_ID, notification("Подготовка захвата аудио…"),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
+            }
+        } catch (_: Exception) {
+            startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
         }
         return START_STICKY
     }
@@ -131,10 +160,30 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
             recording.set(false)
             return
         }
-        val recorder = AudioRecord(
-            MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, sampleRate * 2)
-        )
+        val format = AudioFormat.Builder()
+            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+            .setSampleRate(sampleRate)
+            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+            .build()
+        val recorder = try {
+            val projection = mediaProjection
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && projection != null) {
+                val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection)
+                    .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+                AudioRecord.Builder()
+                    .setAudioFormat(format)
+                    .setBufferSizeInBytes(maxOf(minBuffer, sampleRate * 2))
+                    .setAudioPlaybackCaptureConfig(captureConfig)
+                    .build()
+            } else {
+                AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, sampleRate * 2))
+            }
+        } catch (_: Exception) {
+            AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, sampleRate * 2))
+        }
         audioRecord = recorder
         try {
             recorder.startRecording()
@@ -276,6 +325,8 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         stopped.set(true)
         recording.set(false)
         try { audioRecord?.stop() } catch (_: Exception) {}
+        try { mediaProjection?.stop() } catch (_: Exception) {}
+        mediaProjection = null
         executor.shutdownNow()
         chunks.forEach { it.delete() }
         whisperModel?.let { model -> try { Whisper.releaseModel(model) } catch (_: Exception) {} }
@@ -293,6 +344,8 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         private const val CHANNEL_ID = "video_translate"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "ru.videotranslate.action.STOP"
+        const val EXTRA_RESULT_CODE = "ru.videotranslate.extra.RESULT_CODE"
+        const val EXTRA_RESULT_DATA = "ru.videotranslate.extra.RESULT_DATA"
         private const val CHUNK_SECONDS = 6
         private const val MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin?download=true"
     }
