@@ -1,40 +1,56 @@
 package ru.videotranslate
 
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import android.content.Context
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Offline-capable English -> Russian translation.
+ * The first use downloads Google's language model; no API key or paid endpoint is needed.
+ */
 object TranslationApi {
-    fun translate(endpoint: String, apiKey: String, model: String, source: String): String {
-        require(endpoint.startsWith("https://")) { "Endpoint должен использовать HTTPS" }
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 12_000
-            readTimeout = 20_000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("Authorization", "Bearer $apiKey")
-        }
-        try {
-            val body = JSONObject().apply {
-                put("model", model)
-                put("temperature", 0.2)
-                put("messages", JSONArray().put(JSONObject().apply {
-                    put("role", "system")
-                    put("content", "Ты профессиональный переводчик английской разговорной речи на естественный русский. Переводи только предоставленный фрагмент. Сохраняй смысл, имена и тон. Не добавляй объяснений, кавычек или вводных слов.")
-                }).put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", source)
-                }))
+    fun translate(context: Context, source: String): String {
+        val options = TranslatorOptions.Builder()
+            .setSourceLanguage(TranslateLanguage.ENGLISH)
+            .setTargetLanguage(TranslateLanguage.RUSSIAN)
+            .build()
+        val translator = Translation.getClient(options)
+        val latch = CountDownLatch(1)
+        val translated = AtomicReference<String?>()
+        val failure = AtomicReference<Throwable?>()
+
+        translator.downloadModelIfNeeded(DownloadConditions.Builder().build())
+            .addOnSuccessListener {
+                translator.translate(source)
+                    .addOnSuccessListener {
+                        translated.set(it)
+                        latch.countDown()
+                    }
+                    .addOnFailureListener {
+                        failure.set(it)
+                        latch.countDown()
+                    }
             }
-            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val response = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            if (code !in 200..299) throw IllegalStateException("API HTTP $code: ${response.take(300)}")
-            return JSONObject(response).getJSONArray("choices").getJSONObject(0)
-                .getJSONObject("message").getString("content").trim()
-        } finally { connection.disconnect() }
+            .addOnFailureListener {
+                failure.set(it)
+                latch.countDown()
+            }
+
+        try {
+            if (!latch.await(180, TimeUnit.SECONDS)) {
+                throw IllegalStateException("Загрузка модели или перевод заняли слишком много времени. Проверь интернет.")
+            }
+            failure.get()?.let {
+                throw IllegalStateException("Не удалось загрузить модель перевода. Проверь интернет и повтори попытку.", it)
+            }
+            return translated.get().orEmpty()
+        } finally {
+            translator.close()
+        }
     }
 }
