@@ -100,7 +100,13 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
                 startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
             }
         } catch (_: Exception) {
-            startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
+            mediaProjection = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
+            }
         }
         return START_STICKY
     }
