@@ -93,7 +93,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(10), 0, dp(8))
         })
         hero.addView(TextView(this).apply {
-            text = "Перевод работает на устройстве. API-ключи и аккаунты не нужны."
+            text = "Английская речь → русский перевод и озвучка. Модели работают на устройстве после первой загрузки."
             textSize = 14f
             setTextColor(textMuted)
             setLineSpacing(dp(3).toFloat(), 1f)
