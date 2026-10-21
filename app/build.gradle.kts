@@ -16,4 +16,8 @@ android {
     }
 }
 
+dependencies {
+    implementation("com.google.mlkit:translate:17.0.3")
+}
+
 kotlin { jvmToolchain(17) }
