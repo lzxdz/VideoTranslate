@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -25,6 +26,7 @@ class MainActivity : Activity() {
     private val textMuted = Color.rgb(157, 172, 198)
     private val accent = Color.rgb(113, 100, 255)
     private val mint = Color.rgb(64, 220, 177)
+    private val captureRequestCode = 102
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -169,7 +171,7 @@ class MainActivity : Activity() {
 
         root.addView(sectionLabel("ВАЖНО ЗНАТЬ"), marginParams(top = 22))
         val privacy = TextView(this).apply {
-            text = "🔒  Приложение не сохраняет историю переводов.\n\n🎙  Распознавание использует системную службу Android; она может обрабатывать речь в соответствии со своими настройками.\n\n🔊  Для теста включи звук YouTube через динамик. При первом запуске модели перевода нужен интернет."
+            text = "🔒  Приложение не сохраняет историю переводов.\n\n🎙  Распознавание использует системную службу Android; она может обрабатывать речь в соответствии со своими настройками.\n\n🔊  На Android 10+ можно разрешить захват внутреннего звука приложения; если он недоступен, используется микрофон. При первом запуске нужны интернет и загрузка моделей."
             textSize = 13f
             setTextColor(textMuted)
             setLineSpacing(dp(4).toFloat(), 1f)
@@ -251,10 +253,36 @@ class MainActivity : Activity() {
     }
 
     private fun startTranslator() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            @Suppress("DEPRECATION")
+            startActivityForResult(manager.createScreenCaptureIntent(), captureRequestCode)
+        } else {
+            launchTranslationService(null, 0)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != captureRequestCode) return
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            launchTranslationService(data, resultCode)
+        } else {
+            setStatus("Захват аудио не разрешён — запускаю микрофон", false)
+            launchTranslationService(null, 0)
+        }
+    }
+
+    private fun launchTranslationService(projectionData: Intent?, resultCode: Int) {
         val intent = Intent(this, TranslationService::class.java)
+        if (projectionData != null) {
+            intent.putExtra(TranslationService.EXTRA_RESULT_CODE, resultCode)
+            intent.putExtra(TranslationService.EXTRA_RESULT_DATA, projectionData)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
         else startService(intent)
-        setStatus("Перевод включён", true)
+        setStatus(if (projectionData != null) "Захват звука запущен" else "Перевод включён через микрофон", true)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
