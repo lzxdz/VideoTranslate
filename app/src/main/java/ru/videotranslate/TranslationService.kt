@@ -80,11 +80,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         updateNotification("Перевожу: ${text.take(45)}")
         executor.execute {
             try {
-                val prefs = getSharedPreferences("config", MODE_PRIVATE)
-                val endpoint = prefs.getString("endpoint", "").orEmpty()
-                val key = prefs.getString("key", "").orEmpty()
-                val model = prefs.getString("model", "gpt-4o-mini").orEmpty()
-                val translated = TranslationApi.translate(endpoint, key, model, text)
+                val translated = TranslationApi.translate(this@TranslationService, text)
                 android.os.Handler(mainLooper).post {
                     if (ttsReady && translated.isNotBlank()) {
                         tts?.speak(translated, TextToSpeech.QUEUE_ADD, null, "vt-${now}")
