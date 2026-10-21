@@ -29,9 +29,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Offline speech recognition using whisper.cpp. The model is downloaded once on first run;
- * after that ASR and ML Kit translation run locally. Audio is captured from the microphone,
- * not directly from another app's playback stream.
+ * Low-latency English-to-Russian dubbing. Prefer Android playback capture where allowed,
+ * use the microphone as a fallback, transcribe short rolling segments with Whisper tiny.en,
+ * translate locally with ML Kit, and speak only the Russian translation.
  */
 class TranslationService : Service(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
@@ -57,8 +57,8 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         }
         executor.execute {
             try {
-                val modelFile = File(filesDir, "models/ggml-base.en.bin")
-                if (!modelFile.exists() || modelFile.length() < 100_000_000L) {
+                val modelFile = File(filesDir, "models/ggml-tiny.en.bin")
+                if (!modelFile.exists() || modelFile.length() < 30_000_000L) {
                     modelFile.parentFile?.mkdirs()
                     downloadModel(modelFile)
                 }
@@ -141,7 +141,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
                 temp.copyTo(destination, overwrite = true)
                 temp.delete()
             }
-            if (destination.length() < 100_000_000L) {
+            if (destination.length() < 30_000_000L) {
                 destination.delete()
                 error("Downloaded Whisper model is incomplete")
             }
@@ -352,7 +352,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         private const val ACTION_STOP = "ru.videotranslate.action.STOP"
         const val EXTRA_RESULT_CODE = "ru.videotranslate.extra.RESULT_CODE"
         const val EXTRA_RESULT_DATA = "ru.videotranslate.extra.RESULT_DATA"
-        private const val CHUNK_SECONDS = 6
-        private const val MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin?download=true"
+        private const val CHUNK_SECONDS = 3
+        private const val MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin?download=true"
     }
 }
