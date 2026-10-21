@@ -93,7 +93,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Translation failed", e)
-                updateNotification("Ошибка перевода: проверь API и интернет")
+                updateNotification("Ошибка перевода: проверь интернет и доступность модели")
             } finally { busy.set(false) }
         }
     }
