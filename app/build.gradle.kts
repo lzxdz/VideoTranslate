@@ -8,11 +8,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ru.videotranslate.offline"
+        applicationId = "ru.videotranslate"
         minSdk = 26
         targetSdk = 35
         versionCode = 2
-        versionName = "0.2.0-offline-whisper"
+        versionName = "0.2.0-whisper"
     }
 }
 
