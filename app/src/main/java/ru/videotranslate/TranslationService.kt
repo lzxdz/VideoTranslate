@@ -9,23 +9,27 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import java.util.Locale
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 class TranslationService : Service(), TextToSpeech.OnInitListener {
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
-    private val executor = Executors.newSingleThreadExecutor()
-    private val busy = AtomicBoolean(false)
+    private val translating = AtomicBoolean(false)
     @Volatile private var ttsReady = false
     @Volatile private var lastText = ""
     @Volatile private var lastAt = 0L
+    @Volatile private var pendingText: String? = null
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(NOTIFICATION_ID, notification("Перевод выключен"))
+        startForeground(NOTIFICATION_ID, notification("Подготовка перевода…"))
         tts = TextToSpeech(this, this)
+        TranslationApi.warmUp(applicationContext) { ready ->
+            android.os.Handler(mainLooper).post {
+                if (recognizer != null) updateNotification(if (ready) "Модель перевода готова" else "Не удалось загрузить модель")
+            }
+        }
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             recognizer?.setRecognitionListener(listener)
@@ -45,13 +49,23 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            // Partial results are unstable mid-sentence, so translate only final transcripts.
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 650L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 350L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 700L)
         }
         try { recognizer?.startListening(intent) } catch (_: Exception) {
-            updateNotification("Не удалось запустить распознавание")
+            updateNotification("Перезапускаю распознавание")
+            scheduleListening(900)
         }
+    }
+
+    private fun scheduleListening(delay: Long) {
+        android.os.Handler(mainLooper).postDelayed({ if (recognizer != null) startListening() }, delay)
     }
 
     private val listener = object : RecognitionListener {
@@ -60,41 +74,47 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         override fun onRmsChanged(rmsdB: Float) {}
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
-        override fun onError(error: Int) {
-            android.os.Handler(mainLooper).postDelayed({ if (recognizer != null) startListening() }, 700)
-        }
+        override fun onError(error: Int) { scheduleListening(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1000 else 450) }
         override fun onResults(results: android.os.Bundle?) {
             val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!text.isNullOrBlank()) processRecognized(text)
-            android.os.Handler(mainLooper).postDelayed({ if (recognizer != null) startListening() }, 350)
+            if (!text.isNullOrBlank()) processRecognized(text.trim())
+            scheduleListening(220)
         }
-        override fun onPartialResults(partialResults: android.os.Bundle?) {
-            val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-            if (!text.isNullOrBlank() && text.length >= 28) processRecognized(text)
-        }
+        override fun onPartialResults(partialResults: android.os.Bundle?) {}
         override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
     }
 
     private fun processRecognized(text: String) {
         val now = System.currentTimeMillis()
-        if (text.equals(lastText, true) && now - lastAt < 8_000) return
-        if (text.length < 8 || !busy.compareAndSet(false, true)) return
+        if (text.length < 5) return
+        if (text.equals(lastText, true) && now - lastAt < 12_000) return
         lastText = text
         lastAt = now
-        updateNotification("Перевод активен")
-        executor.execute {
-            try {
-                val translated = TranslationApi.translate(this@TranslationService, text)
-                android.os.Handler(mainLooper).post {
+        if (!translating.compareAndSet(false, true)) {
+            // Bound backlog to one newest phrase; do not let speech queue grow.
+            pendingText = text
+            return
+        }
+        translate(text)
+    }
+
+    private fun translate(text: String) {
+        updateNotification("Перевожу речь…")
+        TranslationApi.translateAsync(applicationContext, text) { result ->
+            android.os.Handler(mainLooper).post {
+                result.onSuccess { translated ->
                     if (ttsReady && translated.isNotBlank()) {
-                        tts?.speak(translated, TextToSpeech.QUEUE_ADD, null, "vt-$now")
-                        updateNotification("Перевод активен")
+                        // Avoid speaking old sentences long after the video has moved on.
+                        tts?.speak(translated, TextToSpeech.QUEUE_FLUSH, null, "vt-" + System.currentTimeMillis())
                     }
+                    updateNotification("Слушаю английскую речь")
+                }.onFailure {
+                    updateNotification("Перевод недоступен — проверь интернет")
                 }
-            } catch (_: Exception) {
-                updateNotification("Ошибка перевода — проверь интернет")
-            } finally {
-                busy.set(false)
+                translating.set(false)
+                val next = pendingText
+                pendingText = null
+                if (!next.isNullOrBlank() && next != text && translating.compareAndSet(false, true)) translate(next)
             }
         }
     }
@@ -103,6 +123,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         if (status == TextToSpeech.SUCCESS) {
             val result = tts?.setLanguage(Locale("ru", "RU"))
             ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
+            if (!ttsReady) updateNotification("Установи русский голос в настройках Android")
         }
     }
 
@@ -142,9 +163,10 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         recognizer = null
         tts?.stop()
         tts?.shutdown()
-        executor.shutdownNow()
+        TranslationApi.close()
         lastText = ""
         lastAt = 0L
+        pendingText = null
         super.onDestroy()
     }
 
