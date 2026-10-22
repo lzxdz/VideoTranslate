@@ -52,8 +52,10 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         super.onCreate()
         createChannel()
         tts = TextToSpeech(this, this)
-        TranslationApi.warmUp(applicationContext) { ready ->
-            if (!ready) updateNotification("Не удалось загрузить модель перевода — нужен интернет")
+        if (AppPrefs.prefs(this).getString(AppPrefs.ENGINE, "google") != "ai") {
+            TranslationApi.warmUp(applicationContext) { ready ->
+                if (!ready) updateNotification("Не удалось загрузить модель перевода — нужен интернет")
+            }
         }
         executor.execute {
             try {
