@@ -21,7 +21,8 @@ class MainActivity : Activity() {
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
     private val captureRequestCode = 102
-    private val p by lazy { AppPrefs.palette(this) }
+    private val p get() = AppPrefs.palette(this)
+    private var renderedTheme: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,6 +34,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        renderedTheme = AppPrefs.theme(this)
         window.statusBarColor = p.background
         window.navigationBarColor = p.background
         window.decorView.systemUiVisibility = if (p.dark) 0 else
@@ -174,6 +176,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (::status.isInitialized && renderedTheme != AppPrefs.theme(this)) render()
         if (::status.isInitialized && AppPrefs.prefs(this).getBoolean(AppPrefs.IS_RUNNING, false)) setStatus("Перевод активен", true)
     }
 
