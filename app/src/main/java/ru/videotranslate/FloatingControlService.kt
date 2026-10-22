@@ -25,6 +25,7 @@ class FloatingControlService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        if (!AppPrefs.prefs(this).getBoolean(AppPrefs.FLOATING_ENABLED, false)) { stopSelf(); return }
         createNotificationChannel()
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(OVERLAY_NOTIFICATION_ID, notification(),
@@ -168,7 +169,7 @@ class FloatingControlService : Service() {
                 MotionEvent.ACTION_MOVE -> {
                     lp.x = (startX + touchX - event.rawX).toInt().coerceAtLeast(0)
                     lp.y = (startY + event.rawY - touchY).toInt().coerceAtLeast(0)
-                    try { windowManager?.updateViewLayout(panel, lp) } catch (_: Exception) {}
+                    try { panel?.let { view -> windowManager?.updateViewLayout(view, lp) } } catch (_: Exception) {}
                     return true
                 }
             }
