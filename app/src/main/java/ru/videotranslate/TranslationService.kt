@@ -32,6 +32,7 @@ import java.net.URL
 import java.util.Locale
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -285,7 +286,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
 
     private fun processChunks() {
         while (!stopped.get()) {
-            val file = try { chunks.take() } catch (_: InterruptedException) { break }
+            val file = try { chunks.poll(500, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { break } ?: continue
             try {
                 val model = whisperModel ?: continue
                 val result = runBlocking {
