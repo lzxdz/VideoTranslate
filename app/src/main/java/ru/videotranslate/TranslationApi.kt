@@ -91,7 +91,7 @@ object TranslationApi {
         aiExecutor.execute {
             var connection: HttpURLConnection? = null
             try {
-                connection = (URL("$base/chat/completions").openConnection() as HttpURLConnection).apply {
+                val conn = (URL("$base/chat/completions").openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 8_000
                     readTimeout = 12_000
@@ -99,6 +99,7 @@ object TranslationApi {
                     setRequestProperty("Authorization", "Bearer $key")
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 }
+                connection = conn
                 val body = JSONObject()
                     .put("model", model)
                     .put("temperature", 0.1)
@@ -108,9 +109,9 @@ object TranslationApi {
                             "Translate the following spoken English into natural concise Russian. Return only the Russian translation. Preserve meaning and do not add explanations."))
                         .put(JSONObject().put("role", "user").put("content", source)))
                     .toString()
-                OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body) }
-                val code = connection.responseCode
-                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val response = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                 if (code !in 200..299) error("AI API вернул HTTP $code")
                 val text = JSONObject(response).getJSONArray("choices").getJSONObject(0)
