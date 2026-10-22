@@ -92,7 +92,7 @@ class SettingsActivity : Activity() {
                         .putString(AppPrefs.AI_MODEL, model).putString(AppPrefs.AI_API_KEY, key).apply()
                     Toast.makeText(this@SettingsActivity, "Настройки API сохранены", Toast.LENGTH_SHORT).show()
                 }
-            }, 12)
+            }, params(12))
             addView(hint("Ключ хранится в настройках приложения и не зашифрован. Не публикуй его и не отправляй в репозиторий."))
         }.also { root.addView(it, params(8)) }
 
@@ -159,11 +159,11 @@ class SettingsActivity : Activity() {
                     else startService(Intent(this@SettingsActivity, FloatingControlService::class.java))
                     Toast.makeText(this@SettingsActivity, "Панель включена", Toast.LENGTH_SHORT).show()
                 }
-            }, 10)
+            }, params(10))
             addView(actionButton("Выключить плавающую панель", false) {
                 p.edit().putBoolean(AppPrefs.FLOATING_ENABLED, false).apply()
                 stopService(Intent(this@SettingsActivity, FloatingControlService::class.java))
-            }, 8)
+            }, params(8))
         }.also { root.addView(it, params(8)) }
 
         root.addView(actionButton("Готово", true) { finish() }, params(20))
