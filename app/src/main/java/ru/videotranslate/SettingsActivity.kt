@@ -21,6 +21,8 @@ class SettingsActivity : Activity() {
     private fun render() {
         window.statusBarColor = c.background
         window.navigationBarColor = c.background
+        window.decorView.systemUiVisibility = if (c.dark) 0 else
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(28))
@@ -213,6 +215,12 @@ class SettingsActivity : Activity() {
     private fun spinner(labels: List<String>, values: List<String>, selected: String, onPick: (String) -> Unit): Spinner {
         val s = Spinner(this)
         val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, labels) {
+            override fun getView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                return super.getView(position, convertView, parent).also { row ->
+                    (row as? TextView)?.setTextColor(c.text)
+                    row.setPadding(dp(12), dp(8), dp(12), dp(8))
+                }
+            }
             override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
                 return super.getDropDownView(position, convertView, parent).also { row ->
                     (row as? TextView)?.setTextColor(Color.BLACK)
