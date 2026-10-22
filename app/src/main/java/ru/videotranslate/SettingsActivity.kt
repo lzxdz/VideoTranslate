@@ -54,7 +54,7 @@ class SettingsActivity : Activity() {
             addView(spinner(listOf("Whisper tiny.en · локально", "Google / системное распознавание · микрофон"),
                 listOf("whisper", "google"), p.getString(AppPrefs.RECOGNITION_ENGINE, "whisper") ?: "whisper") {
                 p.edit().putString(AppPrefs.RECOGNITION_ENGINE, it).apply()
-                render()
+                recreate()
             })
             if (p.getString(AppPrefs.RECOGNITION_ENGINE, "whisper") == "google") {
                 addView(hint("Системное распознавание использует микрофон и сервис распознавания речи, установленный на телефоне. Для захвата внутреннего звука другого приложения выбирай Whisper. Интернет и наличие Google Speech Services могут требоваться."))
@@ -69,7 +69,7 @@ class SettingsActivity : Activity() {
             addView(spinner(listOf("Google ML Kit · локально", "API ИИ · отдельное подключение"),
                 listOf("google", "ai"), p.getString(AppPrefs.ENGINE, "google") ?: "google") {
                 p.edit().putString(AppPrefs.ENGINE, it).apply()
-                render()
+                recreate()
             })
             addView(hint(if (p.getString(AppPrefs.ENGINE, "google") == "ai")
                 "Перевод отправляется выбранному API-провайдеру. Скорость зависит от сети и модели."
@@ -235,9 +235,13 @@ class SettingsActivity : Activity() {
         s.setPadding(dp(8), dp(5), dp(8), dp(5))
         s.background = rounded(c.background, 12)
         s.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            private var lastPosition = initialIndex
             override fun onNothingSelected(parent: AdapterView<*>?) {}
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (values.getOrNull(position) != selected) onPick(values[position])
+                if (position != lastPosition) {
+                    lastPosition = position
+                    values.getOrNull(position)?.let(onPick)
+                }
             }
         }
         return s
