@@ -153,7 +153,8 @@ class MainActivity : Activity() {
                     Toast.makeText(this@MainActivity, "Разреши показ поверх окон, затем включи кнопку в настройках", Toast.LENGTH_LONG).show()
                 } else {
                     AppPrefs.prefs(this@MainActivity).edit().putBoolean(AppPrefs.FLOATING_ENABLED, true).apply()
-                    startService(Intent(this@MainActivity, FloatingControlService::class.java))
+                    if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this@MainActivity, FloatingControlService::class.java))
+                    else startService(Intent(this@MainActivity, FloatingControlService::class.java))
                     Toast.makeText(this@MainActivity, "Плавающая кнопка включена", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -222,6 +223,10 @@ class MainActivity : Activity() {
     }
 
     private fun startTranslator() {
+        if (AppPrefs.prefs(this).getString(AppPrefs.RECOGNITION_ENGINE, "whisper") == "google") {
+            launchTranslationService(null, 0)
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             @Suppress("DEPRECATION")
@@ -247,7 +252,8 @@ class MainActivity : Activity() {
             intent.putExtra(TranslationService.EXTRA_RESULT_DATA, projectionData)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
-        setStatus(if (projectionData != null) "Захват звука запущен" else "Перевод включён через микрофон", true)
+        setStatus(if (projectionData != null) "Захват внутреннего звука запущен" else "Перевод включён через микрофон", true)
+        try { startService(Intent(this, FloatingControlService::class.java).setAction("ru.videotranslate.overlay.REFRESH")) } catch (_: Exception) {}
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
