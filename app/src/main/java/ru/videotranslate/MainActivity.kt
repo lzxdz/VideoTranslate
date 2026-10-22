@@ -2,6 +2,7 @@ package ru.videotranslate
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -10,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.*
@@ -19,257 +21,235 @@ class MainActivity : Activity() {
     private lateinit var statusDot: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
-
-    private val bg = Color.rgb(10, 15, 28)
-    private val panel = Color.rgb(20, 29, 48)
-    private val textPrimary = Color.rgb(242, 246, 255)
-    private val textMuted = Color.rgb(157, 172, 198)
-    private val accent = Color.rgb(113, 100, 255)
-    private val mint = Color.rgb(64, 220, 177)
     private val captureRequestCode = 102
+    private val p: AppPrefs.Palette get() = AppPrefs.palette(this)
+    private var renderedTheme: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = bg
-        window.navigationBarColor = bg
-        window.decorView.systemUiVisibility = 0
+        render()
+        showPendingCrashReport()
+        if (intent.getBooleanExtra(EXTRA_START_FROM_OVERLAY, false)) {
+            intent.removeExtra(EXTRA_START_FROM_OVERLAY)
+            startButton.post { checkPermissionsAndStart() }
+        }
+    }
+
+    private fun render() {
+        renderedTheme = AppPrefs.theme(this)
+        window.statusBarColor = p.background
+        window.navigationBarColor = p.background
+        window.decorView.systemUiVisibility = if (p.dark) 0 else
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(22), dp(22), dp(28))
-            setBackgroundColor(bg)
+            setPadding(dp(20), dp(18), dp(20), dp(28))
+            setBackgroundColor(p.background)
         }
-
-        val brandRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val logo = TextView(this).apply {
-            text = "▶"
-            textSize = 22f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded(accent, 16)
-            layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
-        }
-        brandRow.addView(logo)
+        val brandRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        brandRow.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            contentDescription = "VideoTranslate"
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(52))
+        })
         val brandText = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), 0, 0, 0)
+            setPadding(dp(12), 0, 0, 0)
             addView(TextView(this@MainActivity).apply {
-                text = "VideoTranslate"
-                textSize = 23f
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
-                setTextColor(textPrimary)
+                text = "VideoTranslate"; textSize = 22f
+                typeface = Typeface.create("sans-serif", Typeface.BOLD); setTextColor(p.text)
             })
             addView(TextView(this@MainActivity).apply {
-                text = "ЛИЧНЫЙ ПЕРЕВОДЧИК ВИДЕО"
-                textSize = 10f
-                letterSpacing = 0.12f
-                setTextColor(textMuted)
+                text = "LIVE VOICE TRANSLATION"; textSize = 10f; letterSpacing = .12f; setTextColor(p.muted)
             })
         }
-        brandRow.addView(brandText)
+        brandRow.addView(brandText, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(brandRow)
 
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(20), dp(18), dp(20))
-            background = rounded(panel, 22)
+            setPadding(dp(20), dp(22), dp(20), dp(22))
+            background = rounded(p.surface, 24)
         }
-        val eyebrow = TextView(this).apply {
-            text = "ENGLISH  →  РУССКИЙ"
-            textSize = 12f
-            letterSpacing = 0.08f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(mint)
-        }
-        hero.addView(eyebrow)
         hero.addView(TextView(this).apply {
-            text = "Слушай. Понимай.\nСмотри дальше."
-            textSize = 28f
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            setTextColor(textPrimary)
-            setPadding(0, dp(10), 0, dp(8))
+            text = "ENGLISH  →  РУССКИЙ"; textSize = 12f; letterSpacing = .08f
+            typeface = Typeface.DEFAULT_BOLD; setTextColor(p.accent)
         })
         hero.addView(TextView(this).apply {
-            text = "Английская речь → русский перевод и озвучка. Модели работают на устройстве после первой загрузки."
-            textSize = 14f
-            setTextColor(textMuted)
-            setLineSpacing(dp(3).toFloat(), 1f)
+            text = "Смотри видео.\nПонимай каждое слово."
+            textSize = 28f; typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setTextColor(p.text); setPadding(0, dp(10), 0, dp(8))
         })
-        root.addView(hero, marginParams(top = 22))
+        hero.addView(TextView(this).apply {
+            text = "Захват звука · распознавание речи · перевод · русская озвучка"
+            textSize = 14f; setTextColor(p.muted); setLineSpacing(dp(3).toFloat(), 1f)
+        })
+        root.addView(hero, params(20))
 
-        root.addView(sectionLabel("ПЕРЕВОД"), marginParams(top = 22))
+        root.addView(label("КАК ЭТО РАБОТАЕТ"), params(22))
         val pipeline = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(15), dp(12), dp(15))
-            background = rounded(panel, 18)
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(15), dp(10), dp(15)); background = rounded(p.surface, 18)
         }
-        pipeline.addView(pipelineItem("EN", "Речь", accent), LinearLayout.LayoutParams(0, dp(60), 1f))
-        pipeline.addView(TextView(this).apply {
-            text = "→"
-            textSize = 20f
-            setTextColor(textMuted)
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(dp(24), dp(60)))
-        pipeline.addView(pipelineItem("RU", "Перевод", mint), LinearLayout.LayoutParams(0, dp(60), 1f))
-        pipeline.addView(TextView(this).apply {
-            text = "→"
-            textSize = 20f
-            setTextColor(textMuted)
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(dp(24), dp(60)))
-        pipeline.addView(pipelineItem("♫", "Озвучка", Color.rgb(255, 190, 105)), LinearLayout.LayoutParams(0, dp(60), 1f))
-        root.addView(pipeline, marginParams(top = 8))
+        pipeline.addView(pipelineItem("01", "Слушает", p.accent), LinearLayout.LayoutParams(0, dp(66), 1f))
+        pipeline.addView(TextView(this).apply { text = "›"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(p.muted) }, LinearLayout.LayoutParams(dp(18), dp(60)))
+        pipeline.addView(pipelineItem("02", "Переводит", 0xFF27B58A.toInt()), LinearLayout.LayoutParams(0, dp(66), 1f))
+        pipeline.addView(TextView(this).apply { text = "›"; textSize = 24f; gravity = Gravity.CENTER; setTextColor(p.muted) }, LinearLayout.LayoutParams(dp(18), dp(60)))
+        pipeline.addView(pipelineItem("03", "Озвучивает", 0xFFFFA94D.toInt()), LinearLayout.LayoutParams(0, dp(66), 1f))
+        root.addView(pipeline, params(8))
 
-        root.addView(sectionLabel("УПРАВЛЕНИЕ"), marginParams(top = 22))
+        root.addView(label("УПРАВЛЕНИЕ ПЕРЕВОДОМ"), params(22))
         val statusCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(15), dp(13), dp(15), dp(13))
-            background = rounded(Color.rgb(15, 39, 43), 15)
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(15), dp(13), dp(15), dp(13)); background = rounded(p.surface, 15)
         }
-        statusDot = TextView(this).apply {
-            text = "●"
-            textSize = 14f
-            setTextColor(mint)
-        }
+        statusDot = TextView(this).apply { text = "●"; textSize = 14f; setTextColor(0xFF27B58A.toInt()) }
         statusCard.addView(statusDot)
         status = TextView(this).apply {
-            text = "  Готов к запуску"
-            textSize = 14f
-            setTextColor(Color.rgb(190, 245, 227))
+            text = if (AppPrefs.prefs(this@MainActivity).getBoolean(AppPrefs.IS_RUNNING, false)) "  Перевод активен" else "  Готов к запуску"
+            textSize = 14f; setTextColor(p.text)
         }
         statusCard.addView(status)
-        root.addView(statusCard, marginParams(top = 8))
+        root.addView(statusCard, params(8))
 
         startButton = Button(this).apply {
-            text = "▶    Запустить перевод"
-            isAllCaps = false
-            textSize = 16f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            background = rounded(accent, 16)
+            text = "▶   Запустить перевод"; isAllCaps = false; textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); background = rounded(p.accent, 16)
             setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener { checkPermissionsAndStart() }
         }
-        root.addView(startButton, marginParams(top = 12))
+        root.addView(startButton, params(12))
         stopButton = Button(this).apply {
-            text = "Остановить перевод"
-            isAllCaps = false
-            textSize = 15f
-            setTextColor(textPrimary)
-            background = rounded(Color.rgb(37, 47, 68), 16)
+            text = "■   Остановить перевод"; isAllCaps = false; textSize = 15f
+            setTextColor(p.text); background = rounded(p.surface, 16)
             setOnClickListener {
-                stopService(Intent(this@MainActivity, TranslationService::class.java))
+                startService(Intent(this@MainActivity, TranslationService::class.java).setAction(TranslationService.ACTION_STOP))
                 setStatus("Перевод остановлен", false)
             }
         }
-        root.addView(stopButton, marginParams(top = 8))
+        root.addView(stopButton, params(8))
 
-        root.addView(sectionLabel("ВАЖНО ЗНАТЬ"), marginParams(top = 22))
-        val privacy = TextView(this).apply {
-            text = "🔒  История переводов не сохраняется.\n\n🔊  На Android 10+ приложение пытается захватить внутренний звук видео. Если источник запрещает захват, используется микрофон.\n\n🎧  Приложение озвучивает только русский перевод, но Android не разрешает надёжно заглушить звук другого приложения. Чтобы слышать только перевод, убавь громкость исходного видео или медиагромкость.\n\n⚡  Используется компактная модель Whisper tiny.en. При первом запуске нужно скачать модели через интернет."
-            textSize = 13f
-            setTextColor(textMuted)
-            setLineSpacing(dp(4).toFloat(), 1f)
-            setPadding(dp(4), dp(8), dp(4), dp(8))
-        }
-        root.addView(privacy, marginParams(top = 2))
+        val secondary = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        secondary.addView(Button(this).apply {
+            text = "⚙  Настройки"; isAllCaps = false; setTextColor(p.text); background = rounded(p.surface, 14)
+            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+        }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(6) })
+        secondary.addView(Button(this).apply {
+            text = "◉  Плавающая кнопка"; isAllCaps = false; setTextColor(p.text); background = rounded(p.surface, 14)
+            setOnClickListener {
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")))
+                    Toast.makeText(this@MainActivity, "Разреши показ поверх окон, затем включи кнопку в настройках", Toast.LENGTH_LONG).show()
+                } else {
+                    AppPrefs.prefs(this@MainActivity).edit().putBoolean(AppPrefs.FLOATING_ENABLED, true).apply()
+                    if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this@MainActivity, FloatingControlService::class.java))
+                    else startService(Intent(this@MainActivity, FloatingControlService::class.java))
+                    Toast.makeText(this@MainActivity, "Плавающая кнопка включена", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(6) })
+        root.addView(secondary, params(8))
+
+        root.addView(label("ВАЖНО"), params(22))
         root.addView(TextView(this).apply {
-            text = "VideoTranslate • тестовая версия"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTextColor(Color.rgb(99, 115, 142))
-            setPadding(0, dp(18), 0, dp(4))
-        }, marginParams(top = 10))
+            text = "На Android 10+ VideoTranslate пытается захватить внутренний звук. Если приложение-источник запрещает захват, используется микрофон. Чтобы слышать только русский голос, убавь громкость исходного видео. Перевод ИИ требует собственного API-ключа; Google ML Kit работает локально после загрузки модели."
+            textSize = 13f; setTextColor(p.muted); setLineSpacing(dp(4).toFloat(), 1f)
+            setPadding(dp(4), dp(8), dp(4), dp(8))
+        }, params(2))
+        root.addView(TextView(this).apply {
+            text = "VideoTranslate  ·  preview"; textSize = 11f; gravity = Gravity.CENTER
+            setTextColor(p.muted); setPadding(0, dp(18), 0, dp(4))
+        }, params(10))
 
-        setContentView(ScrollView(this).apply {
-            isFillViewport = true
-            setBackgroundColor(bg)
-            addView(root)
+        setContentView(ScrollView(this).apply { isFillViewport = true; addView(root) })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::status.isInitialized && renderedTheme != AppPrefs.theme(this)) render()
+        if (::status.isInitialized && AppPrefs.prefs(this).getBoolean(AppPrefs.IS_RUNNING, false)) setStatus("Перевод активен", true)
+    }
+
+    private fun showPendingCrashReport() {
+        val prefs = getSharedPreferences(CrashDebugApplication.PREFS, MODE_PRIVATE)
+        val report = prefs.getString(CrashDebugApplication.KEY_REPORT, null)
+        if (!report.isNullOrBlank() && !prefs.getBoolean("crash_prompt_shown", false)) {
+            prefs.edit().putBoolean("crash_prompt_shown", true).apply()
+            window.decorView.post {
+                if (!isFinishing) AlertDialog.Builder(this)
+                    .setTitle("VideoTranslate завершился с ошибкой")
+                    .setMessage("Я сохранил технический отчёт об ошибке. Открой его и отправь мне — это поможет найти причину сбоя настроек.")
+                    .setNegativeButton("Позже", null)
+                    .setPositiveButton("Открыть отчёт") { _, _ ->
+                        startActivity(Intent(this, CrashReportActivity::class.java))
+                    }
+                    .show()
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_START_FROM_OVERLAY, false)) {
+            intent.removeExtra(EXTRA_START_FROM_OVERLAY)
+            checkPermissionsAndStart()
+        }
+    }
+
+    private fun pipelineItem(code: String, title: String, color: Int): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        addView(TextView(this@MainActivity).apply {
+            text = code; textSize = 18f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color); gravity = Gravity.CENTER
+        })
+        addView(TextView(this@MainActivity).apply {
+            text = title; textSize = 11f; setTextColor(p.muted); gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
         })
     }
 
-    private fun pipelineItem(code: String, title: String, color: Int): View {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            addView(TextView(this@MainActivity).apply {
-                text = code
-                textSize = 18f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(color)
-                gravity = Gravity.CENTER
-            })
-            addView(TextView(this@MainActivity).apply {
-                text = title
-                textSize = 11f
-                setTextColor(textMuted)
-                gravity = Gravity.CENTER
-                setPadding(0, dp(4), 0, 0)
-            })
-        }
+    private fun label(value: String) = TextView(this).apply {
+        text = value; textSize = 11f; letterSpacing = .13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(p.muted)
     }
-
-    private fun sectionLabel(value: String) = TextView(this).apply {
-        text = value
-        textSize = 11f
-        letterSpacing = 0.14f
-        typeface = Typeface.DEFAULT_BOLD
-        setTextColor(textMuted)
-    }
-
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = dp(radius).toFloat()
-    }
-
-    private fun marginParams(top: Int = 0): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(top)
-        }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
+    private fun params(top: Int = 0) = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(top) }
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun setStatus(message: String, active: Boolean) {
         status.text = "  $message"
-        statusDot.setTextColor(if (active) mint else Color.rgb(150, 165, 190))
+        statusDot.setTextColor(if (active) 0xFF27B58A.toInt() else p.muted)
+        AppPrefs.prefs(this).edit().putBoolean(AppPrefs.IS_RUNNING, active).apply()
     }
 
     private fun checkPermissionsAndStart() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 100)
-            return
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 100); return
         }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
-            return
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101); return
         }
         startTranslator()
     }
 
     private fun startTranslator() {
+        if (AppPrefs.prefs(this).getString(AppPrefs.RECOGNITION_ENGINE, "whisper") == "google") {
+            launchTranslationService(null, 0)
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             @Suppress("DEPRECATION")
             startActivityForResult(manager.createScreenCaptureIntent(), captureRequestCode)
-        } else {
-            launchTranslationService(null, 0)
-        }
+        } else launchTranslationService(null, 0)
     }
 
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != captureRequestCode) return
-        if (resultCode == Activity.RESULT_OK && data != null) {
-            launchTranslationService(data, resultCode)
-        } else {
-            setStatus("Захват аудио не разрешён — запускаю микрофон", false)
+        if (resultCode == Activity.RESULT_OK && data != null) launchTranslationService(data, resultCode)
+        else {
+            setStatus("Захват звука не разрешён — запускаю микрофон", false)
             launchTranslationService(null, 0)
         }
     }
@@ -280,9 +260,11 @@ class MainActivity : Activity() {
             intent.putExtra(TranslationService.EXTRA_RESULT_CODE, resultCode)
             intent.putExtra(TranslationService.EXTRA_RESULT_DATA, projectionData)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
-        else startService(intent)
-        setStatus(if (projectionData != null) "Захват звука запущен" else "Перевод включён через микрофон", true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+        setStatus(if (projectionData != null) "Захват внутреннего звука запущен" else "Перевод включён через микрофон", true)
+        if (AppPrefs.prefs(this).getBoolean(AppPrefs.FLOATING_ENABLED, false)) {
+            try { startService(Intent(this, FloatingControlService::class.java).setAction("ru.videotranslate.overlay.REFRESH")) } catch (_: Exception) {}
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -291,4 +273,6 @@ class MainActivity : Activity() {
             if (requestCode == 100 || requestCode == 101) checkPermissionsAndStart()
         } else setStatus("Разрешения не выданы", false)
     }
+
+    companion object { const val EXTRA_START_FROM_OVERLAY = "ru.videotranslate.START_FROM_OVERLAY" }
 }

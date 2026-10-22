@@ -1,32 +1,34 @@
 # VideoTranslate
 
-Android-приложение для перевода английской речи из другого приложения на русский язык с русской озвучкой.
+Android app for translating English audio into Russian voice-over.
 
-## Как работает
+## Main features
+- Adaptive UI themes: system, light, dark, Midnight, Ocean and Forest.
+- Speech recognition choice:
+  - **Whisper tiny.en**: local English speech recognition, can process Android playback capture when the source app permits it.
+  - **Google/system SpeechRecognizer**: uses the phone microphone and installed speech recognition services. This mode does not capture another app's internal audio directly.
+- Translation choice:
+  - **Google ML Kit**: local English-to-Russian translation after downloading the model.
+  - **AI API**: separate OpenAI-compatible `/chat/completions` configuration with endpoint, model and user API key.
+- Russian Text-to-Speech with separate voice volume and speech-rate settings.
+- Floating panel over other apps with start/stop, draggable position and a slider for translated voice volume.
+- Whisper audio chunks adjustable to 2, 3 or 5 seconds.
 
-1. На Android 10+ запрашивает системное разрешение на захват внутреннего медиазвука через MediaProjection / AudioPlaybackCapture.
-2. Распознаёт английскую речь локальной моделью Whisper `tiny.en`.
-3. Переводит фразы на русский локальной моделью Google ML Kit.
-4. Озвучивает русский перевод системным Android TTS.
+## Setup
+1. Install and open the app.
+2. In **Settings → Speech recognition**, choose Whisper to capture internal playback audio where supported, or Google/system recognition for microphone input.
+3. In **Settings → Text translation**, choose Google ML Kit or AI API.
+4. AI API requires an HTTPS base URL, model and your own API key. The app sends recognized text to that provider. API usage may cost money and network latency varies.
+5. To enable the floating panel, grant **Display over other apps** and enable the panel from Settings.
 
-Если приложение-источник запрещает захват звука или он недоступен на устройстве, используется микрофон как резервный вариант. Захват внутреннего аудио зависит от Android и политики самого источника.
+## Privacy and limitations
+- The AI API key is stored in app SharedPreferences and is not encrypted at rest. Do not commit API keys.
+- Google ML Kit translation runs locally after the model is downloaded. Whisper speech recognition runs locally after its model is downloaded.
+- Google/system speech recognition uses the microphone; whether it works offline depends on installed speech services and language packs.
+- Android playback capture works only on Android 10+ and only when the source app permits capture.
+- Android does not provide a public API for changing another app's volume independently. The floating slider scales VideoTranslate's synthesized voice, not the source video's volume.
+- Whisper's 2-second chunks may cut phrases; larger chunks can improve context but add delay. Actual latency and recognition quality depend on device and audio quality.
+- A normal app cannot silently start MediaProjection capture. Android may require user confirmation whenever capture is started.
 
-## Скорость
-
-Используется компактная модель `tiny.en` и короткие трёхсекундные аудиофрагменты вместо длинных фрагментов. Это снижает задержку, но не гарантирует мгновенный перевод: скорость зависит от процессора телефона, момента окончания фразы и скорости TTS. Модель Whisper и модель перевода загружаются при первом запуске; для первоначальной загрузки нужен интернет.
-
-## Важно про исходный звук
-
-Приложение озвучивает только русский перевод, но Android не предоставляет обычному стороннему приложению надёжного способа заглушить звук другого приложения. Чтобы слышать только перевод, убавь громкость исходного видео/плеера, если он позволяет, или громкость медиа на устройстве.
-
-## Бесплатность и приватность
-
-- Нет платного API, ключей или подписки.
-- После загрузки моделей распознавание и перевод выполняются на устройстве.
-- Для загрузки моделей при первом запуске требуется интернет.
-- Русский голос зависит от установленного в Android движка и языковых данных TTS.
-- Это экспериментальная debug-сборка; требуется тестирование на реальном устройстве.
-
-## Сборка
-
-GitHub Actions собирает APK при изменениях в `main`: открой вкладку Actions и скачай artifact после успешного завершения workflow.
+## Build
+Open in Android Studio or run `gradle :app:assembleDebug` with JDK 17 and Android SDK 35.
