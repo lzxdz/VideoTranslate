@@ -64,6 +64,7 @@ class FloatingControlService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(MainActivity.EXTRA_START_FROM_OVERLAY, true)
             startActivity(launch)
+            button?.text = "■"
             Toast.makeText(this, "Подтверди захват звука, если Android попросит", Toast.LENGTH_SHORT).show()
         }
     }
