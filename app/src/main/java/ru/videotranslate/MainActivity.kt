@@ -253,7 +253,9 @@ class MainActivity : Activity() {
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
         setStatus(if (projectionData != null) "Захват внутреннего звука запущен" else "Перевод включён через микрофон", true)
-        try { startService(Intent(this, FloatingControlService::class.java).setAction("ru.videotranslate.overlay.REFRESH")) } catch (_: Exception) {}
+        if (AppPrefs.prefs(this).getBoolean(AppPrefs.FLOATING_ENABLED, false)) {
+            try { startService(Intent(this, FloatingControlService::class.java).setAction("ru.videotranslate.overlay.REFRESH")) } catch (_: Exception) {}
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
