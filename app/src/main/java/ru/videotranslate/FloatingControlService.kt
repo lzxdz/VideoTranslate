@@ -44,7 +44,7 @@ class FloatingControlService : Service() {
             background = GradientDrawable().apply {
                 setColor(palette.surface)
                 cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), Color.argb(110, palette.accent))
+                setStroke(dp(1), palette.accent)
             }
             elevation = dp(12).toFloat()
         }
