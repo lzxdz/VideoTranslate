@@ -6,6 +6,8 @@ object AppPrefs {
     const val FILE = "video_translate_settings"
     const val THEME = "theme"
     const val ENGINE = "translation_engine"
+    const val RECOGNITION_ENGINE = "recognition_engine"
+    const val TTS_VOLUME = "tts_volume"
     const val AI_BASE_URL = "ai_base_url"
     const val AI_API_KEY = "ai_api_key"
     const val AI_MODEL = "ai_model"
