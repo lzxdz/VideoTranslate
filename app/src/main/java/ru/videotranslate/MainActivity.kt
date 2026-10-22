@@ -2,6 +2,7 @@ package ru.videotranslate
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -27,6 +28,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         render()
+        showPendingCrashReport()
         if (intent.getBooleanExtra(EXTRA_START_FROM_OVERLAY, false)) {
             intent.removeExtra(EXTRA_START_FROM_OVERLAY)
             startButton.post { checkPermissionsAndStart() }
@@ -168,6 +170,24 @@ class MainActivity : Activity() {
         super.onResume()
         if (::status.isInitialized && renderedTheme != AppPrefs.theme(this)) render()
         if (::status.isInitialized && AppPrefs.prefs(this).getBoolean(AppPrefs.IS_RUNNING, false)) setStatus("Перевод активен", true)
+    }
+
+    private fun showPendingCrashReport() {
+        val prefs = getSharedPreferences(CrashDebugApplication.PREFS, MODE_PRIVATE)
+        val report = prefs.getString(CrashDebugApplication.KEY_REPORT, null)
+        if (!report.isNullOrBlank() && !prefs.getBoolean("crash_prompt_shown", false)) {
+            prefs.edit().putBoolean("crash_prompt_shown", true).apply()
+            window.decorView.post {
+                if (!isFinishing) AlertDialog.Builder(this)
+                    .setTitle("VideoTranslate завершился с ошибкой")
+                    .setMessage("Я сохранил технический отчёт об ошибке. Открой его и отправь мне — это поможет найти причину сбоя настроек.")
+                    .setNegativeButton("Позже", null)
+                    .setPositiveButton("Открыть отчёт") { _, _ ->
+                        startActivity(Intent(this, CrashReportActivity::class.java))
+                    }
+                    .show()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
