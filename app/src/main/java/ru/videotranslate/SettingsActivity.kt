@@ -41,7 +41,7 @@ class SettingsActivity : Activity() {
             addView(spinner(listOf("Как на телефоне", "Светлая", "Тёмная", "Midnight", "Ocean", "Forest"),
                 listOf("system", "light", "dark", "midnight", "ocean", "forest"), AppPrefs.theme(this@SettingsActivity)) {
                 p.edit().putString(AppPrefs.THEME, it).apply()
-                render()
+                recreate()
             })
             addView(hint("Системная тема автоматически следует настройке Android."))
         }.also { root.addView(it, params(8)) }
@@ -212,14 +212,24 @@ class SettingsActivity : Activity() {
     }
     private fun spinner(labels: List<String>, values: List<String>, selected: String, onPick: (String) -> Unit): Spinner {
         val s = Spinner(this)
-        s.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, labels)
-        s.setSelection(values.indexOf(selected).coerceAtLeast(0))
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, labels) {
+            override fun getDropDownView(position: Int, convertView: View?, parent: android.view.ViewGroup): View {
+                return super.getDropDownView(position, convertView, parent).also { row ->
+                    (row as? TextView)?.setTextColor(Color.BLACK)
+                    row.setPadding(dp(14), dp(12), dp(14), dp(12))
+                }
+            }
+        }
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        s.adapter = adapter
+        val initialIndex = values.indexOf(selected).coerceAtLeast(0)
+        s.setSelection(initialIndex, false)
+        s.setPadding(dp(8), dp(5), dp(8), dp(5))
+        s.background = rounded(c.background, 12)
         s.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            private var first = true
             override fun onNothingSelected(parent: AdapterView<*>?) {}
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (first) { first = false; return }
-                onPick(values[position])
+                if (values.getOrNull(position) != selected) onPick(values[position])
             }
         }
         return s
