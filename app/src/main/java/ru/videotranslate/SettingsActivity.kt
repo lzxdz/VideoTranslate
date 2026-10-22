@@ -15,7 +15,7 @@ import android.widget.*
 class SettingsActivity : Activity() {
     private lateinit var root: LinearLayout
     private val p by lazy { AppPrefs.prefs(this) }
-    private val c get() = AppPrefs.palette(this)
+    private val c: AppPrefs.Palette get() = AppPrefs.palette(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
