@@ -143,7 +143,7 @@ class SettingsActivity : Activity() {
             })
             addView(actionButton("Настройки голоса Android", false) {
                 startActivity(Intent("com.android.settings.TTS_SETTINGS"))
-            }, 8)
+            }, params(8))
         }.also { root.addView(it, params(8)) }
 
         section("ПЛАВАЮЩАЯ ПАНЕЛЬ")
