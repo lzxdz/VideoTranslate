@@ -21,7 +21,7 @@ class MainActivity : Activity() {
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
     private val captureRequestCode = 102
-    private val p get() = AppPrefs.palette(this)
+    private val p: AppPrefs.Palette get() = AppPrefs.palette(this)
     private var renderedTheme: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
