@@ -43,7 +43,6 @@ class SettingsActivity : Activity() {
             addView(spinner(listOf("Как на телефоне", "Светлая", "Тёмная", "Midnight", "Ocean", "Forest"),
                 listOf("system", "light", "dark", "midnight", "ocean", "forest"), AppPrefs.theme(this@SettingsActivity)) {
                 p.edit().putString(AppPrefs.THEME, it).apply()
-                recreate()
             })
             addView(hint("Системная тема автоматически следует настройке Android."))
         }.also { root.addView(it, params(8)) }
@@ -54,7 +53,6 @@ class SettingsActivity : Activity() {
             addView(spinner(listOf("Whisper tiny.en · локально", "Google / системное распознавание · микрофон"),
                 listOf("whisper", "google"), p.getString(AppPrefs.RECOGNITION_ENGINE, "whisper") ?: "whisper") {
                 p.edit().putString(AppPrefs.RECOGNITION_ENGINE, it).apply()
-                recreate()
             })
             if (p.getString(AppPrefs.RECOGNITION_ENGINE, "whisper") == "google") {
                 addView(hint("Системное распознавание использует микрофон и сервис распознавания речи, установленный на телефоне. Для захвата внутреннего звука другого приложения выбирай Whisper. Интернет и наличие Google Speech Services могут требоваться."))
@@ -69,7 +67,6 @@ class SettingsActivity : Activity() {
             addView(spinner(listOf("Google ML Kit · локально", "API ИИ · отдельное подключение"),
                 listOf("google", "ai"), p.getString(AppPrefs.ENGINE, "google") ?: "google") {
                 p.edit().putString(AppPrefs.ENGINE, it).apply()
-                recreate()
             })
             addView(hint(if (p.getString(AppPrefs.ENGINE, "google") == "ai")
                 "Перевод отправляется выбранному API-провайдеру. Скорость зависит от сети и модели."
