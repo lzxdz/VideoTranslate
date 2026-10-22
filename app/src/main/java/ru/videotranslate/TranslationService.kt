@@ -12,6 +12,12 @@ import android.media.projection.MediaProjectionManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import dev.ffmpegkit.whisper.Whisper
 import dev.ffmpegkit.whisper.WhisperConfig
@@ -47,6 +53,9 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
     @Volatile private var mediaProjection: MediaProjection? = null
     @Volatile private var lastText = ""
     @Volatile private var lastAt = 0L
+    private var googleRecognizer: SpeechRecognizer? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var googleRestart: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -57,21 +66,23 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
                 if (!ready) updateNotification("Не удалось загрузить модель перевода — нужен интернет")
             }
         }
-        executor.execute {
-            try {
-                val modelFile = File(filesDir, "models/ggml-tiny.en.bin")
-                if (!modelFile.exists() || modelFile.length() < 30_000_000L) {
-                    modelFile.parentFile?.mkdirs()
-                    downloadModel(modelFile)
+        if (AppPrefs.prefs(this).getString(AppPrefs.RECOGNITION_ENGINE, "whisper") == "whisper") {
+            executor.execute {
+                try {
+                    val modelFile = File(filesDir, "models/ggml-tiny.en.bin")
+                    if (!modelFile.exists() || modelFile.length() < 30_000_000L) {
+                        modelFile.parentFile?.mkdirs()
+                        downloadModel(modelFile)
+                    }
+                    updateNotification("Загружаю Whisper tiny.en…")
+                    whisperModel = runBlocking { Whisper.loadModel(this@TranslationService, modelFile.absolutePath) }
+                    if (!stopped.get()) {
+                        updateNotification("Whisper готов · слушаю внутренний звук")
+                        startAudioPipeline()
+                    }
+                } catch (e: Exception) {
+                    updateNotification("Не удалось загрузить Whisper: проверь интернет и память")
                 }
-                updateNotification("Загружаю модель распознавания…")
-                whisperModel = runBlocking { Whisper.loadModel(this@TranslationService, modelFile.absolutePath) }
-                if (!stopped.get()) {
-                    updateNotification("Офлайн-распознавание готово")
-                    startAudioPipeline()
-                }
-            } catch (e: Exception) {
-                updateNotification("Не удалось подготовить модель: проверь интернет и память")
             }
         }
     }
@@ -111,7 +122,55 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
                 startForeground(NOTIFICATION_ID, notification("Подготовка офлайн-модели речи…"))
             }
         }
+        if (AppPrefs.prefs(this).getString(AppPrefs.RECOGNITION_ENGINE, "whisper") == "google") {
+            startGoogleRecognition()
+        }
         return START_STICKY
+    }
+
+    private fun startGoogleRecognition() {
+        if (stopped.get()) return
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            updateNotification("Google Speech Services не найдены — выбери Whisper")
+            return
+        }
+        if (googleRecognizer == null) {
+            googleRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext).also { recognizer ->
+                recognizer.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) { updateNotification("Google распознаёт речь через микрофон") }
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onError(error: Int) { scheduleGoogleRestart(650) }
+                    override fun onResults(results: Bundle?) {
+                        val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+                        if (text.length >= 3) translate(text)
+                        scheduleGoogleRestart(250)
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+            }
+        }
+        try {
+            val request = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            }
+            googleRecognizer?.startListening(request)
+        } catch (_: Exception) { scheduleGoogleRestart(1000) }
+    }
+
+    private fun scheduleGoogleRestart(delayMs: Long) {
+        if (stopped.get()) return
+        googleRestart?.let { mainHandler.removeCallbacks(it) }
+        googleRestart = Runnable { try { googleRecognizer?.cancel() } catch (_: Exception) {}; startGoogleRecognition() }
+        mainHandler.postDelayed(googleRestart!!, delayMs)
     }
 
     private fun downloadModel(destination: File) {
@@ -254,7 +313,11 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
             result.onSuccess { translated ->
                 if (ttsReady && translated.isNotBlank() && !stopped.get()) {
                     android.os.Handler(mainLooper).post {
-                        tts?.speak(translated, TextToSpeech.QUEUE_FLUSH, null, "vt-" + System.currentTimeMillis())
+                        val params = Bundle().apply {
+                            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME,
+                                AppPrefs.prefs(this@TranslationService).getFloat(AppPrefs.TTS_VOLUME, 1f).coerceIn(0f, 1f))
+                        }
+                        tts?.speak(translated, TextToSpeech.QUEUE_FLUSH, params, "vt-" + System.currentTimeMillis())
                     }
                 }
             }.onFailure {
@@ -339,6 +402,10 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
         try { audioRecord?.stop() } catch (_: Exception) {}
         try { mediaProjection?.stop() } catch (_: Exception) {}
         mediaProjection = null
+        googleRestart?.let { mainHandler.removeCallbacks(it) }
+        try { googleRecognizer?.cancel() } catch (_: Exception) {}
+        try { googleRecognizer?.destroy() } catch (_: Exception) {}
+        googleRecognizer = null
         executor.shutdownNow()
         chunks.forEach { it.delete() }
         whisperModel?.let { model -> try { Whisper.releaseModel(model) } catch (_: Exception) {} }
