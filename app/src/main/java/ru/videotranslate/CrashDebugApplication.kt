@@ -23,6 +23,7 @@ class CrashDebugApplication : Application() {
             getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString(KEY_REPORT, "Thread: ${thread.name}\n\n$report")
                 .putLong(KEY_TIME, System.currentTimeMillis())
+                .putBoolean("crash_prompt_shown", false)
                 .commit()
             Log.e("VideoTranslateCrash", report)
             try { postCrashNotification() } catch (notificationError: Throwable) {
