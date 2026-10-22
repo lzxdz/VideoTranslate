@@ -46,12 +46,10 @@ class MainActivity : Activity() {
             setBackgroundColor(p.background)
         }
         val brandRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        brandRow.addView(TextView(this).apply {
-            text = "▶"
-            textSize = 23f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = rounded(p.accent, 17)
+        brandRow.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_launcher)
+            scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            contentDescription = "VideoTranslate"
             layoutParams = LinearLayout.LayoutParams(dp(52), dp(52))
         })
         val brandText = LinearLayout(this).apply {
