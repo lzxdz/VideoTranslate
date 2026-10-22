@@ -77,6 +77,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             stopped.set(true)
+            AppPrefs.prefs(this).edit().putBoolean(AppPrefs.IS_RUNNING, false).apply()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -195,7 +196,8 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
             recorder.startRecording()
             updateNotification("Слушаю английскую речь офлайн")
             val readBuffer = ByteArray(4096)
-            val chunkBytes = sampleRate * 2 * CHUNK_SECONDS
+            val chunkSeconds = AppPrefs.prefs(this).getInt(AppPrefs.CHUNK_SECONDS, 3).coerceIn(2, 5)
+            val chunkBytes = sampleRate * 2 * chunkSeconds
             var pcm = java.io.ByteArrayOutputStream(chunkBytes)
             while (!stopped.get() && recording.get()) {
                 val count = recorder.read(readBuffer, 0, readBuffer.size)
@@ -290,6 +292,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
+            tts?.setSpeechRate(AppPrefs.prefs(this).getFloat(AppPrefs.TTS_RATE, 1.0f))
             val result = tts?.setLanguage(Locale("ru", "RU"))
             ttsReady = result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED
             if (!ttsReady) updateNotification("Установи русский голос в настройках Android")
@@ -329,6 +332,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         stopped.set(true)
+        AppPrefs.prefs(this).edit().putBoolean(AppPrefs.IS_RUNNING, false).apply()
         recording.set(false)
         try { audioRecord?.stop() } catch (_: Exception) {}
         try { mediaProjection?.stop() } catch (_: Exception) {}
@@ -349,7 +353,7 @@ class TranslationService : Service(), TextToSpeech.OnInitListener {
     companion object {
         private const val CHANNEL_ID = "video_translate"
         private const val NOTIFICATION_ID = 42
-        private const val ACTION_STOP = "ru.videotranslate.action.STOP"
+        const val ACTION_STOP = "ru.videotranslate.action.STOP"
         const val EXTRA_RESULT_CODE = "ru.videotranslate.extra.RESULT_CODE"
         const val EXTRA_RESULT_DATA = "ru.videotranslate.extra.RESULT_DATA"
         private const val CHUNK_SECONDS = 3
