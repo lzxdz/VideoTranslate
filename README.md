@@ -1,32 +1,30 @@
 # VideoTranslate
 
-Android-приложение для перевода английской речи из другого приложения на русский язык с русской озвучкой.
+Android app for translating English audio from other apps into Russian speech.
 
-## Как работает
+## Features
+- Adaptive modern UI with system/light/dark themes and Midnight, Ocean and Forest palettes.
+- Audio capture on Android 10+ where the source app permits playback capture; microphone fallback otherwise.
+- Local English speech recognition using Whisper tiny.en.
+- Translation provider selection: Google ML Kit (on-device after model download) or an OpenAI-compatible chat-completions API.
+- Russian system TTS with configurable speech rate.
+- Optional floating overlay control for opening translation and stopping it while using other apps.
+- Adjustable 2, 3 or 5 second audio chunks.
 
-1. На Android 10+ запрашивает системное разрешение на захват внутреннего медиазвука через MediaProjection / AudioPlaybackCapture.
-2. Распознаёт английскую речь локальной моделью Whisper `tiny.en`.
-3. Переводит фразы на русский локальной моделью Google ML Kit.
-4. Озвучивает русский перевод системным Android TTS.
+## AI translation provider
+Open **Settings → Translation → AI compatible API**, set an HTTPS API base URL, model name and your own API key. The app calls `/chat/completions` and sends recognized English text to that provider. API usage may cost money and network latency varies. The key is stored in app SharedPreferences, not encrypted storage; only use this on a device you trust. Do not commit API keys.
 
-Если приложение-источник запрещает захват звука или он недоступен на устройстве, используется микрофон как резервный вариант. Захват внутреннего аудио зависит от Android и политики самого источника.
+Google ML Kit mode translates locally after the English/Russian model is downloaded. Whisper speech recognition is local after its model is downloaded.
 
-## Скорость
+## Floating control
+Grant “Display over other apps” permission, then enable the floating button in Settings. Tap it to open the app and start capture (Android may require confirmation); tap it while translation is active to stop. Android security rules do not allow an app to silently reuse a MediaProjection consent grant indefinitely.
 
-Используется компактная модель `tiny.en` и короткие трёхсекундные аудиофрагменты вместо длинных фрагментов. Это снижает задержку, но не гарантирует мгновенный перевод: скорость зависит от процессора телефона, момента окончания фразы и скорости TTS. Модель Whisper и модель перевода загружаются при первом запуске; для первоначальной загрузки нужен интернет.
+## Limitations
+- Android does not let a normal third-party app reliably mute another app's original audio. Lower the source app's media volume if you want to hear only the Russian dub.
+- Playback capture works only when the source app allows it and its audio usage is eligible.
+- Tiny Whisper and short chunks are a latency/accuracy trade-off. Smaller chunks can cut words and reduce recognition quality; performance depends on the phone.
+- Cloud AI translation may improve phrasing but can be slower than on-device ML Kit and requires network/API access.
+- Russian voice availability depends on the device's installed text-to-speech engine and language data.
 
-## Важно про исходный звук
-
-Приложение озвучивает только русский перевод, но Android не предоставляет обычному стороннему приложению надёжного способа заглушить звук другого приложения. Чтобы слышать только перевод, убавь громкость исходного видео/плеера, если он позволяет, или громкость медиа на устройстве.
-
-## Бесплатность и приватность
-
-- Нет платного API, ключей или подписки.
-- После загрузки моделей распознавание и перевод выполняются на устройстве.
-- Для загрузки моделей при первом запуске требуется интернет.
-- Русский голос зависит от установленного в Android движка и языковых данных TTS.
-- Это экспериментальная debug-сборка; требуется тестирование на реальном устройстве.
-
-## Сборка
-
-GitHub Actions собирает APK при изменениях в `main`: открой вкладку Actions и скачай artifact после успешного завершения workflow.
+## Build
+Open with Android Studio or run `gradle :app:assembleDebug` with JDK 17 and Android SDK 35 installed.
