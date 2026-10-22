@@ -64,15 +64,6 @@ class MainActivity : Activity() {
             })
         }
         brandRow.addView(brandText, LinearLayout.LayoutParams(0, -2, 1f))
-        val settings = TextView(this).apply {
-            text = "⚙"
-            textSize = 24f
-            gravity = Gravity.CENTER
-            setTextColor(p.text)
-            background = rounded(p.surface, 15)
-            setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
-        }
-        brandRow.addView(settings, LinearLayout.LayoutParams(dp(48), dp(48)))
         root.addView(brandRow)
 
         val hero = LinearLayout(this).apply {
